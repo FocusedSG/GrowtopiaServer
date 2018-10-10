@@ -60,6 +60,18 @@ bool verifyPassword(string password, string hash) {
 	return !ret;
 }
 
+string hashPasswordverify(string passwordverify) {
+	char salt[BCRYPT_HASHSIZE];
+	char hash[BCRYPT_HASHSIZE];
+	int ret;
+
+	ret = bcrypt_gensalt(12, salt);
+	assert(ret == 0);
+	ret = bcrypt_hashpw(passwordverify.c_str(), salt, hash);
+	assert(ret == 0);
+	return hash;
+}
+
 string hashPassword(string password) {
 	char salt[BCRYPT_HASHSIZE];
 	char hash[BCRYPT_HASHSIZE];
@@ -553,7 +565,7 @@ public:
 	static string getProperName(string name);
 	static string PlayerDB::fixColors(string text);
 	static int playerLogin(ENetPeer* peer, string username, string password);
-	static int playerRegister(string username, string password);
+	static int playerRegister(string username, string password, string email, string passwordverify);
 };
 
 string PlayerDB::getProperName(string name) {
@@ -652,13 +664,14 @@ int PlayerDB::playerLogin(ENetPeer* peer, string username, string password) {
 	}
 }
 
-int PlayerDB::playerRegister(string username, string password) {
-	username = PlayerDB::getProperName(username);
-	if (username.length() < 3) return -2;
-	std::ifstream ifs("players/" + username + ".json");
-	if (ifs.is_open()) {
-		return -1;
-	}
+int PlayerDB::playerRegister(string username, string password, string email, string passwordverify) {
+    username = PlayerDB::getProperName(username);
+	if (passwordverify != password) return -3;
+    if (username.length() < 3) return -2;
+    std::ifstream ifs("players/" + username + ".json");
+    if (ifs.is_open()) {
+        return -1;
+    }
 	
 	std::ofstream o("players/" + username + ".json");
 	if (!o.is_open()) {
@@ -668,6 +681,8 @@ int PlayerDB::playerRegister(string username, string password) {
 	json j;
 	j["username"] = username;
 	j["password"] = hashPassword(password);
+	j["passwordverify"] = hashPasswordverify(passwordverify);
+	j["email"] = email;
 	j["adminLevel"] = 0;
 	o << j << std::endl;
 	return 1;
@@ -2303,13 +2318,13 @@ int _tmain(int argc, _TCHAR* argv[])
 					}
 					if (id == -1 || count == -1) continue;
 					if (itemDefs.size() < id || id < 0) continue;
-					GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnDialogRequest"), "set_default_color|`o\n\nadd_label_with_icon|big|`w"+ itemDefs.at(id).name +"``|left|"+std::to_string(id)+"|\n\nadd_spacer|small|\nadd_textbox|"+ itemDefs.at(id).description +"|left|\nadd_spacer|small|\nadd_quick_exit|\nadd_button|chc0|Close|noflags|0|0|\nnend_dialog|gazette||OK|"));
+					GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnDialogRequest"), "set_default_color|`o\n\nadd_label_with_icon|big|`wGet a GrowID``|left|206|\n\nadd_spacer|small|\nadd_textbox|A `wGrowID `wmeans `oyou can use a name and password to logon from any device.|\nadd_spacer|small|\nadd_textbox|This `wname `owill be reserved for you and `wshown to other players`o, so choose carefully!|\nadd_text_input|username|GrowID||30|\nadd_text_input|password|Password||100|\nadd_text_input|passwordverify|Password Verify||100|\nadd_textbox|Your `wemail address `owill only be used for account verification purposes and won't be spammed or shared. If you use a fake email, you'll never be able to recover or change your password.|\nadd_text_input|email|Email||100|\nend_dialog|register|Cancel|Get My GrowID!|\n"));
 					ENetPacket * packet = enet_packet_create(p.data,
 						p.len,
 						ENET_PACKET_FLAG_RELIABLE);
 					enet_peer_send(peer, 0, packet);
 
-					//enet_host_flush(server);
+					enet_host_flush(server);
 					delete p.data;
 				}
 				if (cch.find("action|dialog_return") == 0)
@@ -2320,6 +2335,8 @@ int _tmain(int argc, _TCHAR* argv[])
 					bool isRegisterDialog = false;
 					string username = "";
 					string password = "";
+					string passwordverify = "";
+					string email = "";
 					while (std::getline(ss, to, '\n')) {
 						vector<string> infoDat = explode("|", to);
 						if (infoDat.size() == 2) {
@@ -2331,6 +2348,8 @@ int _tmain(int argc, _TCHAR* argv[])
 							if (isRegisterDialog) {
 								if (infoDat[0] == "username") username = infoDat[1];
 								if (infoDat[0] == "password") password = infoDat[1];
+								if (infoDat[0] == "passwordverify") passwordverify = infoDat[1];
+								if (infoDat[0] == "email") email = infoDat[1];
 							}
 						}
 					}
@@ -2339,7 +2358,7 @@ int _tmain(int argc, _TCHAR* argv[])
 #ifdef REGISTRATION
 					if (isRegisterDialog) {
 
-						int regState = PlayerDB::playerRegister(username, password);
+						int regState = PlayerDB::playerRegister(username, password, passwordverify, email);
 						if (regState == 1) {
 							GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnConsoleMessage"), "`rYour account has been created!``"));
 							ENetPacket * packet = enet_packet_create(p.data,
@@ -2348,6 +2367,8 @@ int _tmain(int argc, _TCHAR* argv[])
 							enet_peer_send(peer, 0, packet);
 							delete p.data;
 							GamePacket p2 = packetEnd(appendString(appendString(appendInt(appendString(createPacket(), "SetHasGrowID"), 1), username), password));
+							string passwordverify = "passwordverify";
+							string email = "email";
 							ENetPacket * packet2 = enet_packet_create(p2.data,
 								p2.len,
 								ENET_PACKET_FLAG_RELIABLE);
@@ -2367,6 +2388,14 @@ int _tmain(int argc, _TCHAR* argv[])
 						}
 						else if (regState == -2) {
 							GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnConsoleMessage"), "`rAccount creation has failed, because the name is too short!``"));
+							ENetPacket * packet = enet_packet_create(p.data,
+								p.len,
+								ENET_PACKET_FLAG_RELIABLE);
+							enet_peer_send(peer, 0, packet);
+							delete p.data;
+						}
+						else if (regState == -3) {
+							GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnConsoleMessage"), "`4Passwords mismatch!``"));
 							ENetPacket * packet = enet_packet_create(p.data,
 								p.len,
 								ENET_PACKET_FLAG_RELIABLE);
