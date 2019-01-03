@@ -654,7 +654,8 @@ int PlayerDB::playerLogin(ENetPeer* peer, string username, string password) {
 
 int PlayerDB::playerRegister(string username, string password, string passwordverify, string email) {
     username = PlayerDB::getProperName(username);
-	if (passwordverify != password) return -3;
+    if (email.length() < 5) return -4;
+    if (passwordverify != password) return -3;
     if (username.length() < 3) return -2;
     std::ifstream ifs("players/" + username + ".json");
     if (ifs.is_open()) {
@@ -2363,7 +2364,7 @@ int _tmain(int argc, _TCHAR* argv[])
 							enet_peer_disconnect_later(peer, 0);
 						}
 						else if(regState==-1) {
-							GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnConsoleMessage"), "`rAccount creation has failed, because it already exists!``"));
+							GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnConsoleMessage"), "`4Account creation has failed, because it already exists!``"));
 							ENetPacket * packet = enet_packet_create(p.data,
 								p.len,
 								ENET_PACKET_FLAG_RELIABLE);
@@ -2371,7 +2372,7 @@ int _tmain(int argc, _TCHAR* argv[])
 							delete p.data;
 						}
 						else if (regState == -2) {
-							GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnConsoleMessage"), "`rAccount creation has failed, because the name is too short!``"));
+							GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnConsoleMessage"), "`4Account creation has failed, because the name is too short!``"));
 							ENetPacket * packet = enet_packet_create(p.data,
 								p.len,
 								ENET_PACKET_FLAG_RELIABLE);
@@ -2379,7 +2380,15 @@ int _tmain(int argc, _TCHAR* argv[])
 							delete p.data;
 						}
 						else if (regState == -3) {
-							GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnConsoleMessage"), "`4Passwords mismatch!``"));
+							GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnConsoleMessage"), "`4Account creation has failed, because the passwords does not match!``"));
+							ENetPacket * packet = enet_packet_create(p.data,
+								p.len,
+								ENET_PACKET_FLAG_RELIABLE);
+							enet_peer_send(peer, 0, packet);
+							delete p.data;
+						}
+						else if (regState == -4) {
+							GamePacket p = packetEnd(appendString(appendString(createPacket(), "OnConsoleMessage"), "`4Account creation has failed, beacause the email address is invalid!``"));
 							ENetPacket * packet = enet_packet_create(p.data,
 								p.len,
 								ENET_PACKET_FLAG_RELIABLE);
